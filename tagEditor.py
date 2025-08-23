@@ -74,8 +74,8 @@ frameList = [
   ["TDEN", "Encoding time"],
   ["TDLY", "Playlist delay"],
   ["TDOR", "Original release time"],
-  #["TDRC", "Recording time"],
-  ["TDRL", "Release time"],################ Check here. MPD support TDRC vs. TDRL.
+  ["TDRC", "Recording time"],
+  #["TDRL", "Release time"],################ Check here. MPD support TDRC vs. TDRL.
   ["TDTG", "Tagging time"],
   ["TENC", "Encoded by"],
   ["TEXT", "Lyricist/Text writer"],
@@ -127,7 +127,7 @@ frameList = [
 ]
 
 # The list of general frames excluded from the list above.
-generalTagsList = [["Artist", "TPE1"], ["Title", "TIT2"], ["Album", "TALB"], ["Date", "TDRC"], ["Genre", "TCON"]]
+generalTagsList = [["Artist", "TPE1"], ["Title", "TIT2"], ["Album", "TALB"], ["Date", "TDRL"], ["Genre", "TCON"]]
 
 
 class tagEditor(Gtk.Window):
@@ -226,6 +226,7 @@ class tagEditor(Gtk.Window):
     vbox_fileRenameWidgets.pack_start(Gtk.HSeparator(margin_bottom = 0.5 * self.defaultFontSize, margin_top = 0.5 * self.defaultFontSize), False, False, 0)
 
     self.fileNamePattern = Gtk.Entry(hexpand = True, width_chars = 32)
+    self.fileNamePattern.set_sensitive(False)
     self.fileNamePattern.set_placeholder_text("Hover to get further information.")
     self.fileNamePattern.set_tooltip_text("Use [%Artist], [%Title], etc. from the general tags or any ID3 frame (e.g. [%TIT2]) to use track information for the file name.")
     self.fileNamePattern.connect("changed", self.updateFileNamePreview)
@@ -238,10 +239,27 @@ class tagEditor(Gtk.Window):
     vbox_fileRenameWidgets.pack_start(grid, False, False, 0)
 
     hbox_renameButtons = Gtk.HBox(homogeneous = True, spacing = 5, margin_top = 0.5 * self.defaultFontSize)
-    button = Gtk.Button(label = "Rename selected file")
-    hbox_renameButtons.pack_start(button, True, True, 0)
-    button = Gtk.Button(label = "Rename all files")
-    hbox_renameButtons.pack_start(button, True, True, 0)
+
+    self.renameSelectedFileButton = Gtk.Button(label = "Rename selected file")
+    self.renameSelectedFileButton.set_sensitive(False)
+    self.renameSelectedFileButton.connect("clicked", self.renameSelectedFile)
+    
+    self.renameAllFilesButton = Gtk.Button(label = "Rename all files")
+    self.renameAllFilesButton.set_sensitive(False)
+    self.renameAllFilesButton.connect("clicked", self.renameAllFiles)
+
+    self.hbox_renameWarning = Gtk.HBox(spacing = 5)
+    self.hbox_renameWarning.props.opacity = 0.0
+    warningIcon = Gtk.Image.new_from_icon_name("gtk-dialog-warning", 4)
+    warningText = Gtk.Label(label = "Warning! Cannot rename files due to duplicate file names after rename.", xalign = 0)
+
+    self.hbox_renameWarning.pack_start(warningIcon, False, False, 0)
+    self.hbox_renameWarning.pack_start(warningText, True, True, 0)
+
+    vbox_fileRenameWidgets.add(self.hbox_renameWarning)
+
+    hbox_renameButtons.pack_start(self.renameSelectedFileButton, True, True, 0)
+    hbox_renameButtons.pack_start(self.renameAllFilesButton, True, True, 0)
     
     vbox_fileRenameWidgets.pack_start(hbox_renameButtons, False, False, 0)
 
@@ -263,10 +281,11 @@ class tagEditor(Gtk.Window):
 
     for i in range(len(generalTagsList)):
       # A button for copying the tag to other files.
-      button = Gtk.Button.new_from_icon_name("edit-copy", 4)
-      button.connect("clicked", self.copyTagValueToAllFiles, generalTagsList[i][1])
-      button.set_tooltip_text("Copy " + generalTagsList[i][0].lower() + " to all other files.")
-      self.tagsGrid_default.attach(button, 0, i, 1, 1)
+      setattr(self, "tagCopyButton" + generalTagsList[i][1], Gtk.Button.new_from_icon_name("edit-copy", 4))
+      getattr(self, "tagCopyButton" + generalTagsList[i][1]).set_sensitive(False)
+      getattr(self, "tagCopyButton" + generalTagsList[i][1]).connect("clicked", self.copyTagValueToAllFiles, generalTagsList[i][1])
+      getattr(self, "tagCopyButton" + generalTagsList[i][1]).set_tooltip_text("Copy " + generalTagsList[i][0].lower() + " to all other files.")
+      self.tagsGrid_default.attach(getattr(self, "tagCopyButton" + generalTagsList[i][1]), 0, i, 1, 1)
 
       # A button for reverting the tag to its original value.
       setattr(self, "tagRevertButton" + generalTagsList[i][1], Gtk.Button.new_from_icon_name("edit-undo", 4))
@@ -278,22 +297,23 @@ class tagEditor(Gtk.Window):
       tagLabel = Gtk.Label(label = generalTagsList[i][0], xalign = 0)
       tagLabel.set_tooltip_text(generalTagsList[i][1])
       self.tagsGrid_default.attach(tagLabel, 1, i, 1, 1)
-      print("Adding an entry for " + generalTagsList[i][1])
       setattr(self, "tagEntry" + generalTagsList[i][1], Gtk.Entry(hexpand = True))
       getattr(self, "tagEntry" + generalTagsList[i][1]).set_sensitive(False)
       getattr(self, "tagEntry" + generalTagsList[i][1]).connect("changed", self.noteTagChange, generalTagsList[i][1])
       self.tagsGrid_default.attach(getattr(self, "tagEntry" + generalTagsList[i][1]), 2, i, 6, 1)
 
     self.tagsGrid_default.get_child_at(2, 4).set_tooltip_text("Multiple genres possible, separated by semicolon.")
-    
-    button = Gtk.Button.new_from_icon_name("go-up", 4)
-    button.connect("clicked", self.enumerateOtherTracks)
-    button.set_tooltip_text("Enumerate following files with ascending track number.")
-    self.tagsGrid_default.attach(button, 0, 5, 1, 1)
+
+    self.tagCopyButtonTRCK = Gtk.Button.new_from_icon_name("go-up", 4)
+    self.tagCopyButtonTRCK.set_sensitive(False)
+    self.tagCopyButtonTRCK.connect("clicked", self.enumerateOtherTracks)
+    self.tagCopyButtonTRCK.set_tooltip_text("Enumerate following files with ascending track number.")
+    self.tagsGrid_default.attach(getattr(self, "tagCopyButtonTRCK"), 0, 5, 1, 1)
     tagLabel = Gtk.Label(label = "Track", xalign = 0)
     tagLabel.set_tooltip_text("TRCK")
     self.tagsGrid_default.attach(tagLabel, 1, 5, 1, 1)
-    self.tagEntryTRCK = Gtk.Entry(width_chars = 7, max_length = 7, hexpand = False)
+
+    self.tagEntryTRCK = Gtk.Entry(width_chars = 7, max_length = 7, hexpand = True)
     self.tagEntryTRCK.connect("changed", self.noteTagChange, "TRCK")
     self.tagEntryTRCK.set_sensitive(False)
     self.tagsGrid_default.attach(self.tagEntryTRCK, 2, 5, 1, 1)
@@ -306,16 +326,17 @@ class tagEditor(Gtk.Window):
 
     self.tagsGrid_default.attach(Gtk.Label(label = "|"), 4, 5, 1, 1)
     
-    button = Gtk.Button.new_from_icon_name("edit-copy", 4)
-    button.connect("clicked", self.copyTagValueToAllFiles)
-    button.set_tooltip_text("Copy disc number to all following files.")
-    button.set_hexpand(False)
-    self.tagsGrid_default.attach(button, 5, 5, 1, 1)
+    self.tagCopyButtonTPOS = Gtk.Button.new_from_icon_name("edit-copy", 4)
+    self.tagCopyButtonTPOS.set_sensitive(False)
+    self.tagCopyButtonTPOS.connect("clicked", self.copyTagValueToAllFiles)
+    self.tagCopyButtonTPOS.set_tooltip_text("Copy disc number to all following files.")
+    self.tagCopyButtonTPOS.set_hexpand(False)
+    self.tagsGrid_default.attach(self.tagCopyButtonTPOS, 5, 5, 1, 1)
     
     tagLabel = Gtk.Label(label = "Disc", xalign = 1, margin_right = 5)
     tagLabel.set_tooltip_text("TPOS")
     self.tagsGrid_default.attach(tagLabel, 6, 5, 1, 1)
-    self.tagEntryTPOS = Gtk.Entry(width_chars = 7, max_length = 7, hexpand = False, halign = 1)
+    self.tagEntryTPOS = Gtk.Entry(width_chars = 7, max_length = 7, hexpand = True)
     self.tagEntryTPOS.connect("changed", self.noteTagChange, "TPOS")
     self.tagEntryTPOS.set_sensitive(False)
     #buttonLabelBox.pack_start(tagEntry, False, False, 0)
@@ -327,11 +348,13 @@ class tagEditor(Gtk.Window):
     self.tagRevertButtonTPOS.set_tooltip_text("Revert disc number to its original value.")
     self.tagsGrid_default.attach(self.tagRevertButtonTPOS, 8, 5, 1, 1)
 
-
-    hbox_coverLabelButtonButton = Gtk.HBox(spacing = 5)
+    hbox_coverLabelButtonButton = Gtk.HBox(spacing = 5, homogeneous = True)
     #hbox_coverLabelButtonButton.pack_start(Gtk.HBox(), True, True, 0)
     #hbox_coverLabelButtonButton.pack_start(Gtk.Label(label = "Cover art (APIC)"), False, False, 0)
-    hbox_coverLabelButtonButton.pack_start(Gtk.Button(label = "Set cover …"), True, True, 0)
+    self.setCoverArtButton = Gtk.Button(label = "Set cover …")
+    self.setCoverArtButton.set_sensitive(False)
+    self.setCoverArtButton.connect("clicked", self.chooseCoverArt)
+    hbox_coverLabelButtonButton.pack_start(self.setCoverArtButton, True, True, 0)
 
     self.clearCoverButton = Gtk.Button(label = "Clear cover art")
     self.clearCoverButton.set_sensitive(False)
@@ -341,21 +364,32 @@ class tagEditor(Gtk.Window):
     vbox_coverButtons = Gtk.VBox(spacing = 5)
     vbox_coverButtons.pack_start(hbox_coverLabelButtonButton, False, False, 0)
 
-    button = Gtk.Button(label = "Copy cover to all other files", image = Gtk.Image.new_from_icon_name("edit-copy", 4))
-    button.connect("clicked", self.copyTagValueToAllFiles, "APIC")
-    vbox_coverButtons.pack_start(button, True, True, 0)
+    self.copyCoverToAllFilesButton = Gtk.Button(label = "Copy cover to all other files", image = Gtk.Image.new_from_icon_name("edit-copy", 4))
+    self.copyCoverToAllFilesButton.set_sensitive(False)
+    self.copyCoverToAllFilesButton.connect("clicked", self.copyTagValueToAllFiles, "APIC")
+    vbox_coverButtons.pack_start(self.copyCoverToAllFilesButton, True, True, 0)
 
-    self.tagRevertButtonAPIC = Gtk.Button(label = "Revert cover", image = Gtk.Image.new_from_icon_name("edit-undo", 4))
+    self.tagRevertButtonAPIC = Gtk.Button(label = "Revert this cover", image = Gtk.Image.new_from_icon_name("edit-undo", 4))
     self.tagRevertButtonAPIC.set_sensitive(False)
     self.tagRevertButtonAPIC.connect("clicked", self.revertTag, "APIC")
-    vbox_coverButtons.pack_start(self.tagRevertButtonAPIC, True, True, 0)
+
+    self.tagRevertAllButtonAPIC = Gtk.Button(label = "Revert all covers", image = Gtk.Image.new_from_icon_name("edit-undo", 4))
+    self.tagRevertAllButtonAPIC.set_sensitive(False)
+    self.tagRevertAllButtonAPIC.connect("clicked", self.revertTagInEveryFile, "APIC")
+
+    hbox_coverReversion = Gtk.HBox(spacing = 5, homogeneous = True)
+    hbox_coverReversion.pack_start(self.tagRevertButtonAPIC, True, True, 0)
+    hbox_coverReversion.pack_start(self.tagRevertAllButtonAPIC, True, True, 0)
+
+    vbox_coverButtons.pack_start(hbox_coverReversion, True, True, 0)
 
     hbox_coverArt = Gtk.HBox()
     self.coverArt = Gtk.Image()
     self.coverFrame = Gtk.Frame()
     self.coverFrame.add(self.coverArt)
+    self.coverFrame.connect("size-allocate", self.coverArtFrameChangedSize)
     #hbox_coverArt.pack_start(Gtk.HBox(), True, True, 0)
-    hbox_coverArt.pack_start(self.coverFrame, False, False, 0)
+    hbox_coverArt.pack_start(self.coverFrame, True, True, 0)
     #hbox_coverArt.pack_start(Gtk.HBox(), True, True, 0)
     self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
 
@@ -368,10 +402,14 @@ class tagEditor(Gtk.Window):
     vbox_defaultTags.pack_start(Gtk.Label(label = "General tags", xalign = 0, margin_bottom = 0.5 * self.defaultFontSize), False, False, 0)
     vbox_defaultTags.pack_start(self.tagsGrid_default, False, False, 0)
     
-    hbox_coverAndDefaultTags = Gtk.HPaned()
-    hbox_coverAndDefaultTags.pack1(vbox_coverAndButtons, False, False)
-    hbox_coverAndDefaultTags.pack2(vbox_defaultTags, True, False)
+    #hbox_coverAndDefaultTags = Gtk.HPaned()
+    #hbox_coverAndDefaultTags.pack1(vbox_defaultTags, True, False)
+    #hbox_coverAndDefaultTags.pack2(vbox_coverAndButtons, False, False)
 
+    hbox_coverAndDefaultTags = Gtk.HBox(spacing = 5)
+    hbox_coverAndDefaultTags.pack_start(vbox_defaultTags, True, True, 0)
+    hbox_coverAndDefaultTags.pack_start(vbox_coverAndButtons, False, False, 0)
+    
 
     ##################
     # Extended tags. #
@@ -474,7 +512,7 @@ class tagEditor(Gtk.Window):
 
     hbox_revertButtons = Gtk.HBox(homogeneous = True, margin_top = 0.5 * self.defaultFontSize, spacing = 5)
 
-    self.revertTagsOfThisFileButton = Gtk.Button(label = "Revert tags of this file", image = Gtk.Image.new_from_icon_name("edit-undo", 4))
+    self.revertTagsOfThisFileButton = Gtk.Button(label = "Revert all tags of this file", image = Gtk.Image.new_from_icon_name("edit-undo", 4))
     self.revertTagsOfThisFileButton.set_sensitive(False)
     self.revertTagsOfThisFileButton.connect("clicked", self.revertTagsOfThisFile)
     hbox_revertButtons.pack_start(self.revertTagsOfThisFileButton, True, True, 0)
@@ -539,6 +577,7 @@ class tagEditor(Gtk.Window):
     self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
     self.tagRevertButtonAPIC.set_sensitive(True)
     self.clearCoverButton.set_sensitive(False)
+    print("++++++++++++++++++++++++++++++++++COVER CLEARED")
 
 
   def revertTag(self, button, tag):
@@ -552,19 +591,51 @@ class tagEditor(Gtk.Window):
         self.tagRevertButtonAPIC.set_sensitive(False)
         self.clearCoverButton.set_sensitive(True)
       else:
-        self.clearCoverArt(None)
+        self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
         self.tagRevertButtonAPIC.set_sensitive(False)
     else:
       getattr(self, "tagEntry" + tag).set_text(str(TAGDATA['current'][index][tag]))
       # No need to delete TAGDATA['new'][index][tag] here as it happens right after setting the new text because of the noteTageChange method.
 
 
-  def revertTagsOfThisFile(self):
+  def revertTagInEveryFile(self, button, tag):
     pass
 
 
-  def revertTagsOfAllFiles(self):
-    pass
+  def revertTagsOfThisFile(self, button):
+    selectedIndex = self.getSelectedFileIndex()
+    for k in TAGDATA["current"][selectedIndex].keys():
+      if k in TAGDATA["new"][selectedIndex].keys() and not k == "APIC":
+        value = TAGDATA["current"][selectedIndex][k]
+        if hasattr(value, "text"):
+          getattr(self, "tagEntry" + k).set_text("; ".join(value.text))
+          # After this operation self.noteTagChange deletes the corresponing value in the TAGDATA["new"] dictionary, because both values are identical.
+        else:
+          print("WARNING: No text attribute in frame ", k)
+
+    # Remove tags that have been newly created but not committed yet.
+    for k in TAGDATA["new"][selectedIndex].keys():
+      if not k == "APIC":
+        TAGDATA["new"][selectedIndex].pop(k)
+
+
+  def revertTagsOfAllFiles(self, button):
+    selectedIndex = self.getSelectedFileIndex()
+    for f in TAGDATA["current"]:
+      for k in TAGDATA["current"][f].keys():
+        if k in TAGDATA["new"][f].keys() and not k == "APIC":
+          value = TAGDATA["current"][f][k]
+          if f == selectedIndex:
+            if hasattr(value, "text"):
+              getattr(self, "tagEntry" + k).set_text("; ".join(value.text))
+              # After this operation self.noteTagChange deletes the corresponing value in the TAGDATA["new"] dictionary, because both values are identical.
+            else:
+              print("WARNING: No text attribute in frame ", k)
+          else:
+            TAGDATA["new"][f].pop(k)
+
+    self.revertTagsOfAllFilesButton.set_sensitive(False)
+    self.writeAllChangesButton.set_sensitive(False)
 
 
   def writeChangesToThisFile(self):
@@ -601,6 +672,10 @@ class tagEditor(Gtk.Window):
     print("noteTagChange")
     selectedFileIndex = self.getSelectedFileIndex()
 
+    # Current tag might be empty, so it has to be created if it does not exist yet.
+    if not tagName in TAGDATA["current"][selectedFileIndex]:
+      TAGDATA["current"][selectedFileIndex][tagName] = getattr(mutagen.id3, tagName)()
+      print("CREATED NEW TAG STRUCTURE ", type(getattr(mutagen.id3, tagName)()))
     currentText = TAGDATA["current"][selectedFileIndex][tagName]
     newText = entry.get_text()
 
@@ -621,19 +696,29 @@ class tagEditor(Gtk.Window):
 
     if len(TAGDATA['new'][selectedFileIndex]) > 0:
       self.revertTagsOfThisFileButton.set_sensitive(True)
+      self.revertTagsOfAllFilesButton.set_sensitive(True)
       self.writeChangesToThisFileButton.set_sensitive(True)
+      self.writeAllChangesButton.set_sensitive(True)
     else:
       self.revertTagsOfThisFileButton.set_sensitive(False)
       self.writeChangesToThisFileButton.set_sensitive(False)
+      self.revertTagsOfAllFilesButton.set_sensitive(False)
+      self.writeAllChangesButton.set_sensitive(False)
+      for k in TAGDATA["new"]:
+        if len(TAGDATA["new"][k]) > 0:
+          self.revertTagsOfAllFilesButton.set_sensitive(True)
+          self.writeAllChangesButton.set_sensitive(True)
+          break
 
-    for k in TAGDATA['current']:
-      if k != selectedFileIndex and len(TAGDATA['new'][k]) > 0:
-        self.revertTagsOfAllFilesButton.set_sensitive(True)
-        self.writeAllChangesButton.set_sensitive(True)
-        return
+    self.updateFileNamePreview(None)
 
-    self.revertTagsOfAllFilesButton.set_sensitive(False)
-    self.writeAllChangesButton.set_sensitive(False)
+
+  def renameSelectedFile(self, button):
+    pass
+
+
+  def renameAllFiles(self, button):
+    pass
 
 
   def addCommentLine(self, button):
@@ -701,8 +786,12 @@ class tagEditor(Gtk.Window):
 
   def getSelectedFileIndex(self):
     model, path = self.fileListTreeview.get_selection().get_selected_rows()
-    selectedIndex = path[0].get_indices()[0]
-    return self.fileListStore[selectedIndex][0]
+    if path:
+      selectedIndex = path[0].get_indices()[0]
+      return self.fileListStore[selectedIndex][0]
+    else:
+      return -1
+
 
 
   def enumerateOtherTracks(self, button):
@@ -791,118 +880,145 @@ class tagEditor(Gtk.Window):
       self.customTagsGrid.remove_row(0)
 
     selectedIndex = self.getSelectedFileIndex()
+
+    if selectedIndex == -1:
+      self.renameSelectedFileButton.set_sensitive(False)
+      self.renameAllFilesButton.set_sensitive(False)
+      self.fileNamePattern.set_sensitive(False)    
+    else:
+      self.renameSelectedFileButton.set_sensitive(True)
+      self.renameAllFilesButton.set_sensitive(True)
+      self.fileNamePattern.set_sensitive(True)
+
+      for t in [entry for entry in dir(self) if entry.startswith("tagEntry")]:
+        getattr(self, t).set_sensitive(True)
+
+      for t in [entry for entry in dir(self) if entry.startswith("tagCopyButton")]:
+        getattr(self, t).set_sensitive(True)
     
-    for t in [entry for entry in dir(self) if entry.startswith("tagEntry")]:
-      getattr(self, t).set_sensitive(True)
-
-    self.addExtendedTagsButton.set_sensitive(True)
-    self.addCustomTagButton.set_sensitive(True)
-    self.addCommentButton.set_sensitive(True)
-
-    extendedTagEntries = {}
-    for i in range(int(len(self.tagsGrid_extended) / 2)):
-      extendedTagLabel = self.tagsGrid_extended.get_child_at(0, i).get_label().replace(":", "")
-      extendedTagEntries[extendedTagLabel] = self.tagsGrid_extended.get_child_at(1, i)
-
-    #print("MERGING ", list(TAGDATA['current'][selectedIndex].keys()))
-    #print("AND ", list(TAGDATA['new'][selectedIndex].keys()))
-
-    mergedTagsList = list(TAGDATA['current'][selectedIndex].keys()) + list(TAGDATA['new'][selectedIndex].keys())
-
-    print("TAG DATA IN SELECTION: ", TAGDATA['new'])
-
-    if "APIC" in mergedTagsList:
-      print("APIC FOUND IN LIST")
-      dataOrigin = 'new' if "APIC" in TAGDATA['new'][selectedIndex] else 'current'
-      if dataOrigin == 'new':
-        if TAGDATA[dataOrigin][selectedIndex]["APIC"].data == b'':
-          self.clearCoverArt(None)
+      self.addExtendedTagsButton.set_sensitive(True)
+      self.addCustomTagButton.set_sensitive(True)
+      self.addCommentButton.set_sensitive(True)
+    
+      extendedTagEntries = {}
+      for i in range(int(len(self.tagsGrid_extended) / 2)):
+        extendedTagLabel = self.tagsGrid_extended.get_child_at(0, i).get_label().replace(":", "")
+        extendedTagEntries[extendedTagLabel] = self.tagsGrid_extended.get_child_at(1, i)
+    
+      #print("MERGING ", list(TAGDATA['current'][selectedIndex].keys()))
+      #print("AND ", list(TAGDATA['new'][selectedIndex].keys()))
+    
+      mergedTagsList = list(TAGDATA['current'][selectedIndex].keys()) + list(TAGDATA['new'][selectedIndex].keys())
+    
+      print("TAG DATA IN SELECTION: ", TAGDATA['new'])
+    
+      if "APIC" in mergedTagsList:
+        print("APIC FOUND IN LIST")
+        dataOrigin = 'new' if "APIC" in TAGDATA['new'][selectedIndex] else 'current'
+        if dataOrigin == 'new':
+          if TAGDATA[dataOrigin][selectedIndex]["APIC"].data == b'':
+            self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
+          else:
+            self.setCoverArt(TAGDATA[dataOrigin][selectedIndex]["APIC"].data)
+            self.clearCoverButton.set_sensitive(True)
+          self.tagRevertButtonAPIC.set_sensitive(True)
         else:
           self.setCoverArt(TAGDATA[dataOrigin][selectedIndex]["APIC"].data)
           self.clearCoverButton.set_sensitive(True)
-        self.tagRevertButtonAPIC.set_sensitive(True)
+          self.tagRevertButtonAPIC.set_sensitive(False)
       else:
-        self.setCoverArt(TAGDATA[dataOrigin][selectedIndex]["APIC"].data)
-        self.clearCoverButton.set_sensitive(True)
-        self.tagRevertButtonAPIC.set_sensitive(False)
-    else:
-      self.clearCoverArt(None)
-
-    for tag in mergedTagsList:
-      #currentTagsTemp[tag] = TAGDATA['current'][selectedIndex][tag]
-      #print(type(TAGDATA['current'][selectedIndex][tag]).__name__)
-
-      dataOrigin = 'new' if tag in TAGDATA['new'][selectedIndex] else 'current'
-
-      if dataOrigin == 'new':
-        if hasattr(self, "tagRevertButton" + tag):
-          getattr(self, "tagRevertButton" + tag).set_sensitive(True)
-      else:
-        if hasattr(self, "tagRevertButton" + tag):
-          getattr(self, "tagRevertButton" + tag).set_sensitive(False)
-
-      if tag == "TPE1" or tag == "TIT2" or tag == "TALB" or tag == "TCON" or tag == "TRCK" or tag == "TPOS":
-        getattr(self, "tagEntry" + tag).set_text("; ".join(TAGDATA[dataOrigin][selectedIndex][tag].text))
-      
-      elif tag == "TDRC": # Check, if MPD can handle TDRL tag.
-        tmpList = list(TAGDATA[dataOrigin][selectedIndex][tag].text)
-        for i in range(0, len(tmpList)):
-          tmpList[i] = str(tmpList[i])
-        getattr(self, "tagEntry" + tag).set_text("; ".join(tmpList))
-
-      elif tag == "COMM":
-        for i in range(len(TAGDATA[dataOrigin][selectedIndex][tag])):
-          self.addCommentButton.emit("clicked")
-          self.commentsGrid.get_child_at(0, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['lang'])
-          self.commentsGrid.get_child_at(1, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['desc'])
-          self.commentsGrid.get_child_at(2, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['text'])
-
-      elif tag == "TXXX":
-        for i in range(len(TAGDATA[dataOrigin][selectedIndex][tag])):
-          self.addCustomTagButton.emit("clicked")
-          self.customTagsGrid.get_child_at(0, len(self.customTagsGrid) / 3 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['desc'])
-          self.customTagsGrid.get_child_at(1, len(self.customTagsGrid) / 3 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['text'])
-
-      elif tag == "APIC":
-        pass
-
-      else:
-        print("Extended tag: ", TAGDATA[dataOrigin][selectedIndex][tag], type(TAGDATA[dataOrigin][selectedIndex][tag]))
-        if any(tag in f for f in frameList):
-          self.addExtendedTag(tag, None, TAGDATA[dataOrigin][selectedIndex][tag].text[0])
-        #extendedTagEntries[tag].set_text(TAGDATA[dataOrigin][selectedIndex][tag].text[0])
-
+        print("NO APIC")
+        self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
+        print(self.clearCoverButton.get_sensitive())
     
+      for tag in mergedTagsList:
+        #currentTagsTemp[tag] = TAGDATA['current'][selectedIndex][tag]
+        #print(type(TAGDATA['current'][selectedIndex][tag]).__name__)
+    
+        dataOrigin = 'new' if tag in TAGDATA['new'][selectedIndex] else 'current'
+    
+        if dataOrigin == 'new':
+          if hasattr(self, "tagRevertButton" + tag):
+            getattr(self, "tagRevertButton" + tag).set_sensitive(True)
+        else:
+          if hasattr(self, "tagRevertButton" + tag):
+            getattr(self, "tagRevertButton" + tag).set_sensitive(False)
+    
+        if tag == "TPE1" or tag == "TIT2" or tag == "TALB" or tag == "TRCK" or tag == "TPOS":
+          if hasattr(TAGDATA[dataOrigin][selectedIndex][tag], "text"):
+            getattr(self, "tagEntry" + tag).set_text("; ".join(TAGDATA[dataOrigin][selectedIndex][tag].text))
+          else:
+            getattr(self, "tagEntry" + tag).set_text(TAGDATA[dataOrigin][selectedIndex][tag])
+          #pass
+    
+        elif tag == "TCON":
+          if hasattr(TAGDATA[dataOrigin][selectedIndex][tag], "text"):
+            getattr(self, "tagEntry" + tag).set_text("; ".join(TAGDATA[dataOrigin][selectedIndex][tag].text))
+          else:
+            getattr(self, "tagEntry" + tag).set_text("; ".join(TAGDATA[dataOrigin][selectedIndex][tag]))
+        
+        elif tag == "TDRL": # Check, if MPD can handle TDRL tag.
+          tmpList = list(TAGDATA[dataOrigin][selectedIndex][tag].text)
+          for i in range(0, len(tmpList)):
+            tmpList[i] = str(tmpList[i])
+          getattr(self, "tagEntry" + tag).set_text("; ".join(tmpList))
+    
+        elif tag == "COMM":
+          for i in range(len(TAGDATA[dataOrigin][selectedIndex][tag])):
+            self.addCommentButton.emit("clicked")
+            self.commentsGrid.get_child_at(0, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['lang'])
+            self.commentsGrid.get_child_at(1, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['desc'])
+            self.commentsGrid.get_child_at(2, len(self.commentsGrid) / 4 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['text'])
+    
+        elif tag == "TXXX":
+          for i in range(len(TAGDATA[dataOrigin][selectedIndex][tag])):
+            self.addCustomTagButton.emit("clicked")
+            self.customTagsGrid.get_child_at(0, len(self.customTagsGrid) / 3 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['desc'])
+            self.customTagsGrid.get_child_at(1, len(self.customTagsGrid) / 3 - 1).set_text(TAGDATA[dataOrigin][selectedIndex][tag][i]['text'])
+    
+        elif tag == "APIC":
+          pass
+    
+        else:
+          print("Extended tag: ", TAGDATA[dataOrigin][selectedIndex][tag], type(TAGDATA[dataOrigin][selectedIndex][tag]))
+          if any(tag in f for f in frameList):
+            self.addExtendedTag(tag, None, str(TAGDATA[dataOrigin][selectedIndex][tag].text[0]))
+          #extendedTagEntries[tag].set_text(TAGDATA[dataOrigin][selectedIndex][tag].text[0])
+
+    print("SENSITIVE: ", self.clearCoverButton.get_sensitive())
 
 
   def getTagData(self, filePath):
     returnDict = {}
     data = MP3(filePath)
 
-    print("DATA", type(data['TRCK']))
+    print("DATA", data)
     
-    for d in data:
-      print("CHECKING", d)
-      #print(data[d])
-      #if d != "APIC:":
-        #print(type(data[d]))
-      d_stripped = re.match("^[^:]+", d).group()
-      if d_stripped == "COMM":
-        print(data[d].text, data[d].lang, data[d].desc)
-        if d_stripped in returnDict:
-          returnDict[d_stripped].append({"text" : data[d].text[0], "lang" : data[d].lang, "desc" : data[d].desc})
-        else:
-          returnDict[d_stripped] = [{"text" : data[d].text[0], "lang" : data[d].lang, "desc" : data[d].desc}]
-      elif d_stripped == "TXXX":
-        print(data[d].text, data[d].desc)
-        if d_stripped in returnDict:
-          returnDict[d_stripped].append({"text" : data[d].text[0], "desc" : data[d].desc})
-        else:
-          returnDict[d_stripped] = [{"text" : data[d].text[0], "desc" : data[d].desc}]
-      else:
-        returnDict[d_stripped] = data[d]
-      #print(data[d])
-    return returnDict
+    #for d in data:
+    #  print("CHECKING", d)
+    #  #print(data[d])
+    #  #if d != "APIC:":
+    #    #print(type(data[d]))
+    #  d_stripped = re.match("^[^:]+", d).group()
+    #  if d_stripped == "COMM":
+    #    print(data[d].text, data[d].lang, data[d].desc)
+    #    if d_stripped in returnDict:
+    #      returnDict[d_stripped].append({"text" : data[d].text[0], "lang" : data[d].lang, "desc" : data[d].desc})
+    #    else:
+    #      returnDict[d_stripped] = [{"text" : data[d].text[0], "lang" : data[d].lang, "desc" : data[d].desc}]
+    #  elif d_stripped == "TXXX":
+    #    print(data[d].text, data[d].desc)
+    #    if d_stripped in returnDict:
+    #      returnDict[d_stripped].append({"text" : data[d].text[0], "desc" : data[d].desc})
+    #    else:
+    #      returnDict[d_stripped] = [{"text" : data[d].text[0], "desc" : data[d].desc}]
+    #  else:
+    #    returnDict[d_stripped] = data[d]
+    #  #print(data[d])
+
+    #print("DICTIONARY: ", returnDict, ", ", type(returnDict["TDRC"].text[0]))
+    #return returnDict
+    return data
 
 
   def populateFileListFromArguments(self):
@@ -940,25 +1056,71 @@ class tagEditor(Gtk.Window):
       TAGDATA['current'][filePath] = tagData
       TAGDATA['new'][filePath] = {}
 
-    print("BUILT: ", TAGDATA["new"])
-
     if len(pathsList) > 0:
       self.fileListTreeview.set_cursor(Gtk.TreePath.new_from_indices([0]))
       self.fileListTreeview.grab_focus()
 
+      # Enable all applicable buttons.
+
+
+  def coverArtFrameChangedSize(self, widget, rectangle):
+    print("COVER ART FRAME CHANGED ITS SIZE")
+    imageInside = widget.get_children()[0]
+    imageProps = imageInside.get_pixbuf().props
+    print("RESOURCE", imageInside.props)
+    #widget.set_size_request(max(rectangle.width, rectangle.height), max(rectangle.width, rectangle.height))
+    frameMargin = min(rectangle.width - imageProps.width, rectangle.height - imageProps.height)
+    targetSize = 0
+    if rectangle.width - imageProps.width == frameMargin:
+      targetSize = rectangle.height
+    else:
+      targetSize = rectangle.width
+
     
 
+    #if imageProps.width < imageProps.height:
+    #  imageInside.get_pixbuf().scale_simple(-1, targetSize - frameMargin, 2)
+    #else:
+    #  imageInside.get_pixbuf().scale_simple(targetSize - frameMargin, -1, 2)
 
-  def setCoverArt(self, imageData):
+    selectedIndex = self.getSelectedFileIndex()
+
+    print(selectedIndex)
+
+    print("TARGET SIZE: ", targetSize)
+
+    #widget.set_size_request(targetSize, targetSize)
+
+    #if selectedIndex == -1:
+    #  if imageProps.width > imageProps.height:
+    #    self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"), targetSize - frameMargin - 1, -1)
+    #  else:
+    #    self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"), -1, targetSize - frameMargin - 1)
+
+    
+      
+    print("Frame margin: ", min(rectangle.width - imageProps.width, rectangle.height - imageProps.height))
+    print("Image height: ", imageInside.get_pixbuf().props.height)
+    print(rectangle.width)
+    print(widget.get_children())
+    print(Gtk.Settings.get_default())
+    print(widget.do_compute_child_allocation(widget, rectangle))
+
+
+  def setCoverArt(self, imageData, targetWidth = -1, targetHeight = None):
+    if not targetHeight:
+      targetHeight = 24 * self.defaultFontSize
+
+    print("SETTING IMAGE SIZE: ", targetWidth, ", ", targetHeight)
     if type(imageData) == str:
-      pixbuf = Pixbuf.new_from_file_at_scale(imageData, -1, 24 * self.defaultFontSize, True)
+      pixbuf = Pixbuf.new_from_file_at_scale(imageData, targetWidth, targetHeight, True)
       #print("Default font size: " + str(self.defaultFontSize))
       self.coverArt.set_from_pixbuf(pixbuf)
     else:
       imgObject = io.BytesIO(imageData).read()
       glibBytes = GLib.Bytes.new(imgObject)
       imgDataStream = Gio.MemoryInputStream.new_from_bytes(glibBytes)
-      pixbuf = Pixbuf.new_from_stream_at_scale(imgDataStream, -1, 24 * self.defaultFontSize, True, None)
+      pixbuf = Pixbuf.new_from_stream_at_scale(imgDataStream, targetWidth, targetHeight, True, None)
       #pixbuf = Pixbuf.new_from_stream(imgDataStream)
       self.coverArt.set_from_pixbuf(pixbuf)
     
@@ -974,35 +1136,54 @@ class tagEditor(Gtk.Window):
     #imageWidget.set_margin_top(0)   
     #imageWidget.set_margin_bottom(0)
 
+  def chooseCoverArt(self, button):
+    pass
+
 
   def updateFileNamePreview(self, entry):
-    model, path = self.fileListTreeview.get_selection().get_selected_rows()
-    if len(path) > 0:
-      selectedIndex = path[0].get_indices()[0]
-      # Path to the selected file: model[0][0]
-      # Name of the selected file as shown in the list: model[0][1]
-      entryText = entry.get_text()
-      if entryText == "":
-        self.fileNamePreview.set_text("No pattern to evaluate.")
-      else:
-        # Enable using key words instead of frame names for tag replacements.
-        tagMap = [["Artist", "TPE1"], ["Title", "TIT2"], ["Album", "TALB"], ["Date", "TDRC"], ["Genre", "TCON"], ["Track", "TRCK"], ["Disc", "TPOS"]]
+    selectedIndex = self.getSelectedFileIndex()
+    entryText = self.fileNamePattern.get_text()
+    if entryText == "":
+      self.fileNamePreview.set_text("No pattern to evaluate.")
+      self.renameSelectedFileButton.set_sensitive(False)
+      self.renameAllFilesButton.set_sensitive(False)
+    else:
+      # Enable using key words instead of frame names for tag replacements.
+      tagMap = generalTagsList + [["Track", "TRCK"], ["Disc", "TPOS"]]
+      for t in tagMap:
+        entryText = entryText.replace("[%" + t[0] + "]", "[%" + t[1] + "]")
+      # Replace all frame names with the data saved for the file.
+      potentialTagPlaceholders = re.findall(r"\[%([^]]+)\]", entryText)
+      for p in potentialTagPlaceholders:
+        if p in TAGDATA['new'][selectedIndex]:
+          entryText = entryText.replace("[%" + p + "]", TAGDATA['new'][selectedIndex][p])
+        elif p in TAGDATA['current'][selectedIndex]:
+          entryText = entryText.replace("[%" + p + "]", str(TAGDATA['current'][selectedIndex][p].text[0]))
+      self.fileNamePreview.set_text(entryText + ".mp3")
+
+      # Iterate over all files and check for duplicate file names.
+      newFileNames = []
+      for file in TAGDATA["current"]:
+        fileName = self.fileNamePattern.get_text()
         for t in tagMap:
-          entryText = entryText.replace("[%" + t[0] + "]", "[%" + t[1] + "]")
-        # Replace all frame names with the data saved for the file.
-        potentialTagPlaceholders = re.findall(r"\[%([^]]+)\]", entryText)
+          fileName = fileName.replace("[%" + t[0] + "]", "[%" + t[1] + "]")
+        potentialTagPlaceholders = re.findall(r"\[%([^]]+)\]", fileName)
         for p in potentialTagPlaceholders:
-          if p in TAGDATA['new'][selectedIndex]:
-            entryText = entryText.replace("[%" + p + "]", TAGDATA['new'][selectedIndex][p])
-          elif p in TAGDATA['current'][selectedIndex]:
-            entryText = entryText.replace("[%" + p + "]", str(TAGDATA['current'][selectedIndex][p].text[0]))
-        self.fileNamePreview.set_text(entryText + ".mp3")
+          if p in TAGDATA['new'][file]:
+            fileName = fileName.replace("[%" + p + "]", TAGDATA['new'][file][p])
+          elif p in TAGDATA['current'][file]:
+            fileName = fileName.replace("[%" + p + "]", str(TAGDATA['current'][file][p].text[0]))
 
-
-  def getID3V2Data(self, a):
-    model, iterator = self.fileListTreeview.get_selection().get_selected()
-    filePath = model.get_value(iterator, 0)
-    fileName = model.get_value(iterator, 1)
+        if fileName in newFileNames:
+          self.hbox_renameWarning.props.opacity = 1.0
+          self.renameSelectedFileButton.set_sensitive(False)
+          self.renameAllFilesButton.set_sensitive(False)
+        else:
+          self.hbox_renameWarning.props.opacity = 0.0
+          self.renameSelectedFileButton.set_sensitive(True)
+          self.renameAllFilesButton.set_sensitive(True)
+          newFileNames.append(fileName)
+          
 
 
   def openExtendedTagsList(self, button):

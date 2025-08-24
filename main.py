@@ -265,6 +265,9 @@ class mpdGUI(Gtk.Window):
 
     self.mpd = mpdClient()
 
+    self.mpd.send("tagtypes all")
+    print(self.mpd.send("tagtypes"))
+
     windowTitle = ""
     currentPlaylist = re.findall("[0-9]+:file: [^\n]+", self.mpd.send("playlist"))
     if len(currentPlaylist) > 0:
@@ -1027,9 +1030,13 @@ class mpdGUI(Gtk.Window):
       artist = model.get_value(latestListEntry, 0)
       album = model.get_value(latestListEntry, 1)
       year = model.get_value(latestListEntry, 2)
-    
-      selectedAlbumInfo = self.mpd.send("find artist \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+
+      selectedAlbumInfo = self.mpd.send("find artistsort \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+
+      print(re.findall(r"file: .*?(?!file:)", selectedAlbumInfo, re.DOTALL | re.MULTILINE))
+
       tracklist_originDirectory = re.findall("file: ([^\n]+)", selectedAlbumInfo)[0]
+      tracklist_artists = re.findall("Artist: ([^\n]+)", selectedAlbumInfo)
       tracklist_tracks = re.findall("Track: ([^\n]+)", selectedAlbumInfo)
       tracklist_titles = re.findall("Title: ([^\n]+)", selectedAlbumInfo)
       tracklist_durations = re.findall("Time: ([^\n]+)", selectedAlbumInfo)
@@ -1173,34 +1180,40 @@ class mpdGUI(Gtk.Window):
     currentDate = ""
     currentAlbum = ""
 
+    print("SEARCHING IN ", albumLines)
+
     if len(albumLines) > 0:
       for i in range(0, len(albumLines)):
-        if re.match("^Artist: ", albumLines[i]):
-          currentArtist = re.sub("^Artist: ", "", albumLines[i])
+        if re.match("^ArtistSort: ", albumLines[i]):
+          currentArtist = re.sub("^ArtistSort: ", "", albumLines[i])
         if re.match("^Date: ", albumLines[i]):
           currentDate = re.sub("^Date: ", "", albumLines[i])
         if re.match("^Album: ", albumLines[i]):
-          currentAlbum = re.sub("^Album: ", "", albumLines[i])
-          listEntry = [currentArtist, currentAlbum, currentDate]
-          # Overwrite entries if they already exist in the treestore …
-          if len(treestore) > newEntriesCount:
-            path = Gtk.TreePath.new_from_indices([newEntriesCount])
-            iterator = model.get_iter(path)
-            treestore.set(iterator, [0, 1, 2], listEntry)
-          # … and append them if the treestore is not long enough already.
-          # This procedure reduces the amount of times the treestore length has to change while populating the library.
+          if currentAlbum == re.sub("^Album: ", "", albumLines[i]):
+            # Duplicate album names for the same artist appear, if at least one track has at least one additional (guest) artist.
+            continue
           else:
-            treestore.append(listEntry)
-          
-          newEntriesCount += 1
-          
-          # Used when re-populating the library after having updated the database.
-          # Try to restore the previous selection by row values.
-          if len(prevSelectedEntry) == 3 and "".join(listEntry) == "".join(prevSelectedEntry):
-            prevSelectedIndex = newEntriesCount - 1
-          # Only count actual albums and ignore empty album tags.
-          if currentAlbum != "":
-            albumsCount += 1
+            currentAlbum = re.sub("^Album: ", "", albumLines[i])
+            listEntry = [currentArtist, currentAlbum, currentDate]
+            # Overwrite entries if they already exist in the treestore …
+            if len(treestore) > newEntriesCount:
+              path = Gtk.TreePath.new_from_indices([newEntriesCount])
+              iterator = model.get_iter(path)
+              treestore.set(iterator, [0, 1, 2], listEntry)
+            # … and append them if the treestore is not long enough already.
+            # This procedure reduces the amount of times the treestore length has to change while populating the library.
+            else:
+              treestore.append(listEntry)
+            
+            newEntriesCount += 1
+            
+            # Used when re-populating the library after having updated the database.
+            # Try to restore the previous selection by row values.
+            if len(prevSelectedEntry) == 3 and "".join(listEntry) == "".join(prevSelectedEntry):
+              prevSelectedIndex = newEntriesCount - 1
+            # Only count actual albums and ignore empty album tags.
+            if currentAlbum != "":
+              albumsCount += 1
       
       treeview.set_cursor(Gtk.TreePath.new_from_indices([prevSelectedIndex]))
 

@@ -1026,77 +1026,109 @@ class mpdGUI(Gtk.Window):
     # When searching the library treeview by typing, the paths list is empty, so this condition has to be handled.
     if len(paths) > 0:
       latestListEntry = model.get_iter(paths[-1]) # The cover to be displayed is the one for the last album in the list of selections.
-      
+
+      # The entries that are used to search the database.
       artist = model.get_value(latestListEntry, 0)
       album = model.get_value(latestListEntry, 1)
       year = model.get_value(latestListEntry, 2)
 
       selectedAlbumInfo = self.mpd.send("find artistsort \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+      tracks = re.findall(r"file: .*?(?=file:|$)", selectedAlbumInfo, re.DOTALL)
 
-      print(re.findall(r"file: .*?(?!file:)", selectedAlbumInfo, re.DOTALL | re.MULTILINE))
-
-      tracklist_originDirectory = re.findall("file: ([^\n]+)", selectedAlbumInfo)[0]
-      tracklist_artists = re.findall("Artist: ([^\n]+)", selectedAlbumInfo)
       tracklist_tracks = re.findall("Track: ([^\n]+)", selectedAlbumInfo)
-      tracklist_titles = re.findall("Title: ([^\n]+)", selectedAlbumInfo)
-      tracklist_durations = re.findall("Time: ([^\n]+)", selectedAlbumInfo)
-      tracklist_discs = re.findall("Disc: ([^\n]+)", selectedAlbumInfo)
+      tracklist_tracks_maxChars = max([len(str(int(t))) for t in tracklist_tracks])
+      
       tracklist_genres = re.findall("Genre: ([^\n]+)", selectedAlbumInfo)
-      totalPlaytime = 0
-
-      artist = artist if artist != "" else "[unknown artist]"
-      album = album if album != "" else "[unknown album]"
-      year = year if year != "" else "[unknown release date]"
-
       if len(tracklist_genres) > 0:
-        # Remove the duplicates from the list and join the entries.
+        # Remove the duplicates from the list, …
         tracklist_genres = [*set(tracklist_genres)]
+        # … sort them alphebetically, …
         tracklist_genres.sort()
+        # … and join all entries.
         tracklist_genres = ", ".join(tracklist_genres)
       else:
         tracklist_genres = ""
       
-      self.albumInfo_heading.set_markup("<span font=\"" + str(1.5 * self.defaultFontSize) + "\"><b>" + album.replace("&","&amp;") + "</b></span> — " + year)
-      self.albumInfo_subtitle.set_markup("by " + artist.replace("&","&amp;") + "\n" + tracklist_genres)
+      self.albumInfo_heading.set_markup("<span font=\"" + str(1.5 * self.defaultFontSize) + "\"><b>" + (album.replace("&","&amp;") if album != "" else "[unknown album]") + "</b></span> — " + (year if year != "" else "[unknown release date]"))
+      self.albumInfo_subtitle.set_markup("by " + (artist.replace("&","&amp;") if artist != "" else "[unknown artist]") + "\n" + tracklist_genres)
 
+      # Clear the tracklist grid.
       while len(self.albumInfo_tracklistGrid.get_children()) != 0:
         self.albumInfo_tracklistGrid.remove_column(0)
-    
+
+      # A variable that is supposed to keep track of inserted blank lines.
+      # Blank lines occur in multi-disc album tracklists between the individual disc tracklists.
       blankLineOffset = 0
-      for i in range(0, len(tracklist_titles)):
-        if i > 0 and len(tracklist_discs) > 0 and tracklist_discs[i] > tracklist_discs[i-1]:
+      trackDisc = None
+      totalPlaytime = 0
+      for i, t in enumerate(tracks):
+        trackArtist = re.findall(r"^Artist: (.+)", t, re.MULTILINE)
+        trackDisc_tmp = re.findall(r"^Disc: (.+)", t, re.MULTILINE)
+
+        if not trackDisc and trackDisc_tmp:
+          trackDisc = trackDisc_tmp[0]
+
+        if trackDisc and trackDisc_tmp and trackDisc != trackDisc_tmp[0]:
           self.albumInfo_tracklistGrid.attach(Gtk.Label(), 0, i + blankLineOffset, 1, 1)
           self.albumInfo_tracklistGrid.attach(Gtk.Label(), 1, i + blankLineOffset, 1, 1)
           self.albumInfo_tracklistGrid.attach(Gtk.Label(), 2, i + blankLineOffset, 1, 1)
           blankLineOffset += 1
-    
-        if len(tracklist_tracks) > i:
-          trackNumber = tracklist_tracks[i]
-        else:
-          trackNumber = "00"
+          trackDisc = trackDisc_tmp[0]
 
-        self.albumInfo_tracklistGrid.attach(Gtk.Label(label = trackNumber, xalign = 1, yalign = 0, width_chars = 2), 0, i + blankLineOffset, 1, 1)
+        trackNumber = re.findall(r"^Track: (.+)", t, re.MULTILINE)
+        if len(trackNumber) > 0:
+          trackNumber = trackNumber[0]
+        else:
+          trackNumber = "0"
+
+        trackTitle = re.findall(r"^Title: (.+)", t, re.MULTILINE)
+        if len(trackTitle) > 0:
+          trackTitle = trackTitle[0]
+        else:
+          trackTitle = "[unknown track title]"
+
+        # Getting the first element of the re.findall() result is save for each track has a length.
+        trackDuration = re.findall(r"^Time: (.+)", t, re.MULTILINE)[0]
+
+        self.albumInfo_tracklistGrid.attach(Gtk.Label(label = trackNumber, xalign = 1, yalign = 0, width_chars = tracklist_tracks_maxChars), 0, i + blankLineOffset, 1, 1)
         label = Gtk.Label()
         label.set_width_chars(30)
         label.set_max_width_chars(30)
         label.set_line_wrap(True)
         label.set_line_wrap_mode(0)
-        label.set_label(tracklist_titles[i].replace("feat. ", "feat. ")) # Replacing with a non-breaking space.
         label.set_xalign(0)
-        self.albumInfo_tracklistGrid.attach(label, 1, i + blankLineOffset, 1, 1)
-        self.albumInfo_tracklistGrid.attach(Gtk.Label(label = secondsToTime(int(tracklist_durations[i])), xalign = 1, yalign = 0, width_chars=8), 2, i + blankLineOffset, 1, 1)
-        totalPlaytime = totalPlaytime + int(tracklist_durations[i])
 
-      self.albumInfo_tracklistGrid.attach(Gtk.Label(), 1, len(tracklist_titles) + blankLineOffset, 1, 1)
-      self.albumInfo_tracklistGrid.attach(Gtk.Label(label = "Total playtime:", xalign = 1), 1, len(tracklist_titles) + blankLineOffset + 1, 1, 1)
-      self.albumInfo_tracklistGrid.attach(Gtk.Label(label = secondsToTime(totalPlaytime), xalign = 1), 2, len(tracklist_titles) + blankLineOffset + 1, 1, 1)
+        additionalArtistsString = ""
+        if len(trackArtist) > 1:
+          additionalArtistsString = "[feat. "
+          for artistIndex in range(1, len(trackArtist)):
+            additionalArtistsString += trackArtist[artistIndex]
+            if artistIndex < len(trackArtist) - 2:
+              additionalArtistsString += ", "
+            if artistIndex == len(trackArtist) - 2:
+              if len(trackArtist) > 3:
+                additionalArtistsString += ", and "
+              else:
+                additionalArtistsString += " and "
+          additionalArtistsString += "]"
+
+        trackTitle += " " + additionalArtistsString
+      
+        label.set_label(trackTitle) # Replacing with a non-breaking space.
+        
+        self.albumInfo_tracklistGrid.attach(label, 1, i + blankLineOffset, 1, 1)
+        self.albumInfo_tracklistGrid.attach(Gtk.Label(label = secondsToTime(int(trackDuration)), xalign = 1, yalign = 0, width_chars=8), 2, i + blankLineOffset, 1, 1)
+        totalPlaytime = totalPlaytime + int(trackDuration)
+
+      self.albumInfo_tracklistGrid.attach(Gtk.Label(), 1, len(tracks) + blankLineOffset, 1, 1)
+      self.albumInfo_tracklistGrid.attach(Gtk.Label(label = "Total playtime:", xalign = 1), 1, len(tracks) + blankLineOffset + 1, 1, 1)
+      self.albumInfo_tracklistGrid.attach(Gtk.Label(label = secondsToTime(totalPlaytime), xalign = 1), 2, len(tracks) + blankLineOffset + 1, 1, 1)
 
       self.albumInfo_tracklistGrid.show_all()
 
       # Reset scrolled window to the start/top (14).
       self.infoScroll.do_scroll_child(self.infoScroll, 14, False)
 
-      print(tracklist_originDirectory)
       self.findAndSetCoverArt(self.coverArt, tracklist_originDirectory)
 
 

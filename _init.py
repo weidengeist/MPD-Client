@@ -50,7 +50,7 @@ c = newClient()
 #c.getArtistList()
 #print(c.playlistinfo())
 
-#print("TAGTYPES: ", c.send("tagtypes"))
+print("TAGTYPES: ", c.send("tagtypes"))
 #print(c.channels())
 #print(c.sendmessage("localhost", "tagtypes"))
 

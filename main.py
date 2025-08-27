@@ -1033,6 +1033,8 @@ class mpdGUI(Gtk.Window):
       year = model.get_value(latestListEntry, 2)
 
       selectedAlbumInfo = self.mpd.send("find artistsort \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+
+      tracklist_originDirectory = re.findall("file: ([^\n]+)", selectedAlbumInfo)[0]
       tracks = re.findall(r"file: .*?(?=file:|$)", selectedAlbumInfo, re.DOTALL)
 
       tracklist_tracks = re.findall("Track: ([^\n]+)", selectedAlbumInfo)

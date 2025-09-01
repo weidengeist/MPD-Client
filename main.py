@@ -190,8 +190,8 @@ class lyricsEditor(Gtk.Window):
     if len(currentSong) > 0:
       self.songPath = re.findall("file: ([^\n]+)", currentSong)[0]
       fullSongPath = parent.mpd.musicDirectory + "/" + self.songPath
-      songFileName = re.findall("(.*)\..+", (self.songPath.split("/"))[-1])[0]
-      searchDirectory = re.findall("(.*)/.*", fullSongPath)[0]
+      songFileName = re.findall(r"(.*)\..+", (self.songPath.split("/"))[-1])[0]
+      searchDirectory = re.findall(r"(.*)/.*", fullSongPath)[0]
       self.lyricsFilePath = searchDirectory + "/lyrics/" + songFileName
       self.lyricsFilePathLabel.set_markup("Lyrics file: <span font=\"Monospace\">" + self.lyricsFilePath + "</span>")
       if sysPath.exists(self.lyricsFilePath):
@@ -915,7 +915,7 @@ class mpdGUI(Gtk.Window):
       if re.match(genreRegex, newGenreList) or selectedGenreIndex == 0:
         print("Old Genre still available")
         if selectedGenreIndex > 0:
-          span = int(re.findall("span=\([0-9]+, ([0-9]+)\)", str(re.match(genreRegex, newGenreList)))[0])
+          span = int(re.findall(r"span=\([0-9]+, ([0-9]+)\)", str(re.match(genreRegex, newGenreList)))[0])
           newGenreIndex = len(re.findall("\n", newGenreList[0:span])) # The index in the new genre list that has to be selected.
       else:
         print("Old Genre no longer available")
@@ -963,7 +963,7 @@ class mpdGUI(Gtk.Window):
 
   def findAndSetLyrics(self, lyricsLabel, songPath):
     # songPath does not include the music directory.
-    songFileName = re.findall("(.*)\..+", (songPath.split("/"))[-1])[0]
+    songFileName = re.findall(r"(.*)\..+", (songPath.split("/"))[-1])[0]
     fullSongPath = self.mpd.musicDirectory + "/" + songPath
     searchDirectory = re.findall("(.*)/.*", fullSongPath)[0]
     if sysPath.exists(searchDirectory + "/lyrics/" + songFileName):
@@ -1344,7 +1344,7 @@ class mpdGUI(Gtk.Window):
       
       self.songProgress.set_fraction(skipToPosition / progressBarWidth)
       self.songProgress.set_text(secondsToTime(int(skipToPosition / progressBarWidth * totalSongLength)) + "/" + secondsToTime(totalSongLength))
-      
+
       self.mpd.send("seekcur " + str(int( skipToPosition / progressBarWidth * totalSongLength)))
       # To do: Update playlist end time.
 
@@ -1394,6 +1394,9 @@ class mpdGUI(Gtk.Window):
       # In this case, change the pause-play-button image to the pause icon.
       else:
         self.button_pause_play.set_image(Gtk.Image.new_from_icon_name("media-playback-pause", 4))
+        # Workaround for an MPD bug.
+        self.mpd.send("pause")
+        self.mpd.send("play")
 
       self.updatePlaylistPlaytimeInfo()
   

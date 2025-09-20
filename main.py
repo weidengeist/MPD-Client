@@ -1032,7 +1032,7 @@ class mpdGUI(Gtk.Window):
       album = model.get_value(latestListEntry, 1)
       year = model.get_value(latestListEntry, 2)
 
-      selectedAlbumInfo = self.mpd.send("find artistsort \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+      selectedAlbumInfo = self.mpd.send("find artist \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
 
       tracklist_originDirectory = re.findall("file: ([^\n]+)", selectedAlbumInfo)[0]
       tracks = re.findall(r"file: .*?(?=file:|$)", selectedAlbumInfo, re.DOTALL)
@@ -1211,6 +1211,7 @@ class mpdGUI(Gtk.Window):
     albumsCount = 0
     listEntry = []
     currentArtist = ""
+    currentArtistSort = ""
     currentDate = ""
     currentAlbum = ""
 
@@ -1218,8 +1219,10 @@ class mpdGUI(Gtk.Window):
 
     if len(albumLines) > 0:
       for i in range(0, len(albumLines)):
-        if re.match("^ArtistSort: ", albumLines[i]):
-          currentArtist = re.sub("^ArtistSort: ", "", albumLines[i])
+        #if re.match("^ArtistSort: ", albumLines[i]):
+        #  currentArtistSort = re.sub("^ArtistSort: ", "", albumLines[i])
+        if re.match("^Artist: ", albumLines[i]):
+          currentArtist = re.sub("^Artist: ", "", albumLines[i])
         if re.match("^Date: ", albumLines[i]):
           currentDate = re.sub("^Date: ", "", albumLines[i])
         if re.match("^Album: ", albumLines[i]):
@@ -1395,7 +1398,11 @@ class mpdGUI(Gtk.Window):
       else:
         self.button_pause_play.set_image(Gtk.Image.new_from_icon_name("media-playback-pause", 4))
         # Workaround for an MPD bug.
+        status = self.mpd.send("status")
+        currentPlaybackPosition = re.findall("[\n]?elapsed: ([^\n]+)", status)[0]
         self.mpd.send("pause")
+        # Skip back by one second to prevent the »pause« command from skipping playback time, especially the very first second of a song.
+        self.mpd.send("seekcur " + str(max(0, int(float(currentPlaybackPosition)) - 1)))
         self.mpd.send("play")
 
       self.updatePlaylistPlaytimeInfo()

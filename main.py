@@ -1038,7 +1038,10 @@ class mpdGUI(Gtk.Window):
       tracks = re.findall(r"file: .*?(?=file:|$)", selectedAlbumInfo, re.DOTALL)
 
       tracklist_tracks = re.findall("Track: ([^\n]+)", selectedAlbumInfo)
-      tracklist_tracks_maxChars = max([len(str(int(t))) for t in tracklist_tracks])
+      if len(tracklist_tracks) > 0:
+        tracklist_tracks_maxChars = max([len(str(int(t))) for t in tracklist_tracks])
+      else:
+        tracklist_tracks_maxChars = 1
       
       tracklist_genres = re.findall("Genre: ([^\n]+)", selectedAlbumInfo)
       if len(tracklist_genres) > 0:

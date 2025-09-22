@@ -362,6 +362,7 @@ class mpdGUI(Gtk.Window):
     self.playlistTreeView = Gtk.TreeView(model = self.playlistTreeStore)
     self.playlistTreeView.get_selection().set_mode(Gtk.SelectionMode(3))
     self.playlistTreeView.set_rubber_banding(True)
+    self.playlistTreeView.connect("key_press_event", self.keyPressed_playlist)
 
     #self.playlistTreeView.connect("key_press_event", self.keyPressed_playlist)
     
@@ -732,9 +733,10 @@ class mpdGUI(Gtk.Window):
     print("Show!")
 
 
-  def keyPressed_playlist(self, a, b):
-    print(a, b)
-    
+  def keyPressed_playlist(self, treeView, event):
+    if Gdk.keyval_name(event.keyval) == "Delete":
+      self.buttonDeletePlaylistItems(None, treeView, self.playlistTreeStore)
+
 
   def buttonAddAlbumsClicked(self, button):
     currentPlaylistLength = int(re.findall("[\n]?playlistlength: ([^\n]+)", self.mpd.send("status"))[0])

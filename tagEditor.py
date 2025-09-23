@@ -131,7 +131,7 @@ generalTagsList = [["Artist", "TPE1"], ["Title", "TIT2"], ["Album", "TALB"], ["D
 
 
 class tagEditor(Gtk.Window):
-  def __init__(self):
+  def __init__(self, parent, songs = []):
     super().__init__()
 
     # Get the system default font size. Needed for varying font sizes in info panels.
@@ -142,7 +142,9 @@ class tagEditor(Gtk.Window):
     self.set_default_icon_name("id3v2-editor")
     self.set_title("WeiD3 — ID3v2 tag editor")
     self.set_default_size(1, 1)
-
+    self.set_transient_for(parent)
+    self.set_position(4)
+    #self.connect("destroy", self.quit, parent)
 
     # The box containing the main vbox elements.
     hbox_main = Gtk.HPaned()
@@ -150,7 +152,6 @@ class tagEditor(Gtk.Window):
     hbox_main.set_margin_bottom(0.5 * self.defaultFontSize)
     hbox_main.set_margin_start(0.5 * self.defaultFontSize)
     hbox_main.set_margin_end(0.5 * self.defaultFontSize)
-    
   
     # The box containing the file list and file rename frame.
     vbox_fileListAndRename = Gtk.VBox(spacing = 0.5 * self.defaultFontSize)
@@ -566,6 +567,8 @@ class tagEditor(Gtk.Window):
 
     self.connect("destroy", Gtk.main_quit)
 
+    self.populateFileListFromPathList(songs)
+
     Gtk.main()
 
 
@@ -577,7 +580,6 @@ class tagEditor(Gtk.Window):
     self.setCoverArt(sysPath.join(BASEDIR, "noCover.png"))
     self.tagRevertButtonAPIC.set_sensitive(True)
     self.clearCoverButton.set_sensitive(False)
-    print("++++++++++++++++++++++++++++++++++COVER CLEARED")
 
 
   def revertTag(self, button, tag):
@@ -661,7 +663,7 @@ class tagEditor(Gtk.Window):
     response = fileChooser.run()
     if response == Gtk.ResponseType.OK:
       self.fileListStore.clear()
-      self.populateFileListFromPathsList(fileChooser.get_filenames())
+      self.populateFileListFromPathList(fileChooser.get_filenames())
 
     print(TAGDATA["new"])
 
@@ -1043,10 +1045,10 @@ class tagEditor(Gtk.Window):
             else:
               print("— " + f + " is no valid mp3 file.")
     newList.sort()
-    self.populateFileListFromPathsList(newList)
+    self.populateFileListFromPathList(newList)
     
 
-  def populateFileListFromPathsList(self, pathsList):
+  def populateFileListFromPathList(self, pathsList):
     TAGDATA['current'] = {}
     TAGDATA['new'] = {}
     for filePath in pathsList:
@@ -1311,9 +1313,11 @@ class extendedTagsListWindow(Gtk.Window):
     del parent.childWindow
 
 
-#if len(sys.argv) > 1:
-#  tagEditor()
-#else:
-#  tagEditor()
+def main():
+  tagEditor(None)
 
-tagEditor()
+
+if __name__ == "__main__":
+  main()
+
+

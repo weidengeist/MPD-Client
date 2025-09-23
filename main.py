@@ -21,8 +21,11 @@ from gi.repository import GLib # For GLib.timeout_add.
 from gi.repository.GdkPixbuf import Pixbuf
 from gi.repository import Pango
 
+from tagEditor import *
+
 # Get the base directory. This is needed for evaluating symbolic links to the original program path.
 BASEDIR = sysPath.join("/".join(sysPath.realpath(sys.argv[0]).split("/")[0:-1]))
+TAGEDITORPATH = sysPath.join(BASEDIR, "tagEditor.py")
 
 
 #############################
@@ -1189,6 +1192,24 @@ class mpdGUI(Gtk.Window):
 
   def openTagEditor(self, button):
     print("To do! Open tags editor.")
+    model, paths = self.libraryTreeView.get_selection().get_selected_rows() # The index list of the selected entries.
+    
+    # When searching the library treeview by typing, the paths list is empty, so this condition has to be handled.
+    if len(paths) > 0:
+      latestListEntry = model.get_iter(paths[-1]) # The cover to be displayed is the one for the last album in the list of selections.
+
+      # The entries that are used to search the database.
+      artist = model.get_value(latestListEntry, 0)
+      album = model.get_value(latestListEntry, 1)
+      year = model.get_value(latestListEntry, 2)
+
+      selectedAlbumInfo = self.mpd.send("find artist \"" + artist + "\" album \"" + album + "\" date \"" + year + "\"")
+
+      currentlyShownTracklist = re.findall("file: ([^\n]+)", selectedAlbumInfo)
+      for i in range(len(currentlyShownTracklist)):
+        currentlyShownTracklist[i] = sysPath.join(self.mpd.musicDirectory, currentlyShownTracklist[i])
+
+      thisTagEditor = tagEditor(self, currentlyShownTracklist)
 
 
   def playlistEntryDoubleclicked(self, treeview, path, column):
